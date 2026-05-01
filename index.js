@@ -109,22 +109,16 @@ client.on('interactionCreate', async interaction => {
 });
 
 // --- CONSTANTES DE CANALES ---
-const BIENVENIDA_CHANNEL_ID = '1492936706524188803';
+const BIENVENIDA_CHANNEL_ID = '1496695262243197039';
 const DESPEDIDA_CHANNEL_ID  = '1492936706524188804';
-const LOGS_CHANNEL_ID       = '1493253487998537758';
+const LOGS_CHANNEL_ID       = '1499828573261922406';
 
 // --- EVENTO: ENTRADA DE MIEMBROS (SEGURIDAD + BIENVENIDA) ---
 client.on('guildMemberAdd', async member => {
-    // 🛡️ FILTRO ANTI-SPAM (Dona 2.0)
-    const nombreProhibido = "Dona 2.0";
-    if (member.user.username.toLowerCase().includes(nombreProhibido.toLowerCase())) {
-        try {
-            await member.ban({ reason: 'Detección automática: Usuario marcado como spammer (Dona 2.0)' });
-            console.log(`[SEGURIDAD] ${member.user.tag} ha sido baneado automáticamente.`);
-            
+
             const logChannel = member.guild.channels.cache.get(LOGS_CHANNEL_ID);
             if (logChannel) {
-                logChannel.send(`🛡️ **Sistema Anti-Spam:** Se ha baneado a \`${member.user.tag}\` (Coincidencia con Dona 2.0).`);
+                logChannel.send(`🛡️ **Sistema Anti-Spam:** Se ha baneado a \`${member.user.tag}\``);
             }
             return; // Detener ejecución para que no le dé la bienvenida
         } catch (err) {

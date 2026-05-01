@@ -3,35 +3,43 @@ const fs = require('node:fs');
 const path = require('node:path');
 const express = require('express');
 const app = express();
+const { manejarAfk } = require('./utils/afk');
 
-app.get('/', (req, res) => {
-  res.send('Bot online!');
-});
+// Servidor para Render
+app.get('/', (req, res) => res.send('Bot online!'));
 
 const PORT = process.env.PORT || 3000;
-
 app.listen(PORT, '0.0.0.0', () => {
-  console.log(`Servidor web iniciado en el puerto ${PORT}`);
+    console.log(`Servidor web iniciado en el puerto ${PORT}`);
 });
-const { Client, Collection, GatewayIntentBits, Partials, REST, Routes } = require('discord.js');
 
-// Agregamos intents mínimos necesarios para interacciones
+const { 
+    Client, Collection, GatewayIntentBits, 
+    Partials, REST, Routes, EmbedBuilder 
+} = require('discord.js');
+
+const { agregarTexto, obtenerCola } = require('./utils/tts');
+const { manejarBotonTicket }        = require('./commands/utilidad/ticket');
+
 const client = new Client({ 
-    intents: [GatewayIntentBits.Guilds] 
+    intents: [
+        GatewayIntentBits.Guilds,
+        GatewayIntentBits.GuildMembers,
+        GatewayIntentBits.GuildMessages,
+        GatewayIntentBits.MessageContent,
+        GatewayIntentBits.GuildVoiceStates,
+    ],
+    partials: [Partials.GuildMember, Partials.Message, Partials.Channel]
 });
+
 client.commands = new Collection();
 const commandsArray = [];
 
 console.log("--- Iniciando Kripton Bot ---");
 
+// Carga de comandos
 const foldersPath = path.join(__dirname, 'commands');
-if (!fs.existsSync(foldersPath)) {
-    console.error("❌ ERROR: No encuentro la carpeta 'commands'.");
-    process.exit();
-}
-
 const commandFolders = fs.readdirSync(foldersPath);
-
 for (const folder of commandFolders) {
     const commandsPath = path.join(foldersPath, folder);
     if (fs.lstatSync(commandsPath).isDirectory()) {
@@ -42,81 +50,163 @@ for (const folder of commandFolders) {
             if ('data' in command && 'execute' in command) {
                 client.commands.set(command.data.name, command);
                 commandsArray.push(command.data.toJSON());
-                console.log(`   ✅ Comando cargado: /${command.data.name}`);
+                console.log(`    ✅ Comando cargado: /${command.data.name}`);
             }
         }
     }
 }
 
+// Registro de Slash Commands
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-
 (async () => {
     try {
         await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commandsArray });
         console.log('✅ Comandos registrados con éxito.');
-    } catch (error) { console.error("❌ Error en registro:", error); }
+    } catch (error) { 
+        console.error("❌ Error en registro:", error); 
+    }
 })();
 
-// --- MANEJO DE COMANDOS Y BOTONES ---
+// --- MANEJO DE INTERACCIONES ---
 client.on('interactionCreate', async interaction => {
-    // 1. Manejo de Slash Commands
     if (interaction.isChatInputCommand()) {
         const command = client.commands.get(interaction.commandName);
         if (!command) return;
-        try { await command.execute(interaction); } 
-        catch (e) { console.error(e); await interaction.reply({ content: '❌ Error.', ephemeral: true }); }
+        try { 
+            await command.execute(interaction); 
+        } catch (e) { 
+            console.error(e); 
+            await interaction.reply({ content: '❌ Error al ejecutar el comando.', flags: 64 });
+        }
     } 
-    // 2. Manejo de Botones (Rechazar/Devolver)
     else if (interaction.isButton()) {
-        const [prefijo, tipo, sub, originalId] = interaction.customId.split('_');
+        if (interaction.customId.startsWith('ticket_')) {
+            return manejarBotonTicket(interaction);
+        }
+
+        const [prefijo, tipo, sub, originalId, targetId] = interaction.customId.split('_');
         if (prefijo !== 'soc') return;
 
-        if (tipo === 'rej') { // RECHAZAR
-            await interaction.update({ content: `❌ Interacción rechazada por **${interaction.user.username}**`, embeds: [], components: [] });
-        } else if (tipo === 'ret') { // DEVOLVER
+        if (interaction.user.id !== targetId) {
+            return interaction.reply({ 
+                content: '❌Este botón no es para vos. Solo la persona que recibió la acción puede usarlo.', 
+                flags: 64 
+            });
+        }
+
+        if (tipo === 'rej') {
+            await interaction.update({ content: `❌ **${interaction.user.username}** rechazó la interacción.`, embeds: [], components: [] });
+        } else if (tipo === 'ret') {
             const command = client.commands.get('social');
-            const originalUser = await client.users.fetch(originalId);
+            const userA = interaction.user;
+            const userB = await client.users.fetch(originalId); 
             
-            // Generamos el embed invertido
-            const nuevoEmbed = await command.generarEmbed(interaction.user, originalUser, sub);
-            
-            await interaction.reply({ content: `🔄 **${interaction.user.username}** le devolvió el gesto a <@${originalId}>!`, embeds: [nuevoEmbed] });
-            await interaction.message.edit({ components: [] }); // Quitamos botones del anterior
+            const nuevoEmbed = await command.generarEmbed(userA, userB, sub);
+            await interaction.reply({ content: `🔄 ¡Gesto devuelto!`, embeds: [nuevoEmbed] });
+            await interaction.message.edit({ components: [] });
         }
     }
 });
 
-client.once('ready', () => console.log(`🚀 ${client.user.tag} EN LÍNEA`));
-// --- CONFIGURACIÓN: ID DE CANALES ---
-const BIENVENIDA_CHANNEL_ID = '1492936706524188803'; // Cambia por tu ID
-const DESPEDIDA_CHANNEL_ID = '1492936706524188804';   // Cambia por tu ID
+// --- CONSTANTES DE CANALES ---
+const BIENVENIDA_CHANNEL_ID = '1492936706524188803';
+const DESPEDIDA_CHANNEL_ID  = '1492936706524188804';
+const LOGS_CHANNEL_ID       = '1493253487998537758';
 
-// --- BIENVENIDA ---
-client.on('guildMemberAdd', member => {
+// --- EVENTO: ENTRADA DE MIEMBROS (SEGURIDAD + BIENVENIDA) ---
+client.on('guildMemberAdd', async member => {
+    // 🛡️ FILTRO ANTI-SPAM (Dona 2.0)
+    const nombreProhibido = "Dona 2.0";
+    if (member.user.username.toLowerCase().includes(nombreProhibido.toLowerCase())) {
+        try {
+            await member.ban({ reason: 'Detección automática: Usuario marcado como spammer (Dona 2.0)' });
+            console.log(`[SEGURIDAD] ${member.user.tag} ha sido baneado automáticamente.`);
+            
+            const logChannel = member.guild.channels.cache.get(LOGS_CHANNEL_ID);
+            if (logChannel) {
+                logChannel.send(`🛡️ **Sistema Anti-Spam:** Se ha baneado a \`${member.user.tag}\` (Coincidencia con Dona 2.0).`);
+            }
+            return; // Detener ejecución para que no le dé la bienvenida
+        } catch (err) {
+            console.error("Error al ejecutar auto-ban:", err);
+        }
+    }
+
+    // Lógica normal de autorol
+    if (AUTOROL_ID) {
+        member.roles.add(AUTOROL_ID).catch(err => console.error("Error al dar autorol:", err));
+    }
+
+    // Mensaje de bienvenida
     const channel = member.guild.channels.cache.get(BIENVENIDA_CHANNEL_ID);
     if (!channel) return;
-
+    
     const embed = new EmbedBuilder()
-        .setTitle('👋 ¡Bienvenido al servidor!')
+        .setTitle('👋 ¡Bienvenido!')
         .setColor('#00FF00')
-        .setDescription(`¡Hola ${member.user}! Esperamos que la pases genial en **${member.guild.name}**.\nYa somos ${member.guild.memberCount} miembros.`)
-        .setThumbnail(member.user.displayAvatarURL())
+        .setDescription(`¡Hola ${member.user}! Bienvenido a **${member.guild.name}**.`)
         .setTimestamp();
-
     channel.send({ embeds: [embed] });
 });
 
-// --- DESPEDIDA ---
-client.on('guildMemberRemove', member => {
+client.on('guildMemberRemove', async member => {
     const channel = member.guild.channels.cache.get(DESPEDIDA_CHANNEL_ID);
-    if (!channel) return;
+    if (channel) {
+        channel.send(`😢 **${member.user.tag}** ha abandonado el servidor.`);
+    }
+    try {
+        await member.send(`😢 Hola ${member.user.username}, lamentamos que hayas decidido dejar **${member.guild.name}**. ¡Esperamos volver a verte pronto!`);
+    } catch (err) {
+        console.log(`No pude enviar DM a ${member.user.tag}.`);
+    }
+});
+
+// --- LOGS DE MENSAJES ---
+client.on('messageUpdate', (oldMsg, newMsg) => {
+    if (oldMsg.author?.bot || oldMsg.content === newMsg.content) return;
+    const logChannel = newMsg.guild?.channels.cache.get(LOGS_CHANNEL_ID);
+    if (!logChannel) return;
 
     const embed = new EmbedBuilder()
-        .setTitle('😢 Alguien se ha ido')
-        .setColor('#FF0000')
-        .setDescription(`**${member.user.tag}** ha abandonado el servidor.`)
-        .setTimestamp();
-
-    channel.send({ embeds: [embed] });
+        .setTitle('✏️ Mensaje Editado')
+        .setColor('#FFA500')
+        .addFields(
+            { name: 'Usuario', value: `${newMsg.author.tag}`, inline: true },
+            { name: 'Canal', value: `${newMsg.channel.name}`, inline: true },
+            { name: 'Antes', value: oldMsg.content || '*Contenido no disponible*' },
+            { name: 'Ahora', value: newMsg.content || '*Contenido no disponible*' }
+        );
+    logChannel.send({ embeds: [embed] });
 });
-client.login(process.env.DISCORD_TOKEN).catch(e => console.error("❌ Error de Token:", e));
+
+client.on('messageDelete', (message) => {
+    if (message.author?.bot) return;
+    const logChannel = message.guild?.channels.cache.get(LOGS_CHANNEL_ID);
+    if (!logChannel) return;
+
+    const embed = new EmbedBuilder()
+        .setTitle('🗑️ Mensaje Borrado')
+        .setColor('#FF0000')
+        .setDescription(`Mensaje de ${message.author.tag} borrado en ${message.channel}`)
+        .addFields({ name: 'Contenido', value: message.content || '*Contenido no disponible*' });
+    logChannel.send({ embeds: [embed] });
+});
+
+// --- EVENTOS DE MENSAJE (AFK, TTS, IA) ---
+client.on('messageCreate', async (message) => {
+    if (message.author.bot) return;
+
+    if (message.guild) {
+        const cola = obtenerCola(message.guild.id);
+        if (cola && cola.activo && message.channel.id === cola.canalTextoId) {
+            agregarTexto(message.guild.id, message.content);
+        }
+    }
+
+    }
+});
+
+
+client.once('ready', () => console.log(`🚀 ${client.user.tag} EN LÍNEA`));
+
+client.login(process.env.DISCORD_TOKEN);

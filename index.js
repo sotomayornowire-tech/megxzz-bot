@@ -36,6 +36,10 @@ client.commands = new Collection();
 const commandsArray = [];
 
 // --- CONSTANTES DE CANALES Y ROLES ---
+// IMPORTANTE: Pon aquí la ID de tu servidor para que los comandos aparezcan al instante.
+// (Click derecho en el icono de tu servidor -> Copiar ID de servidor)
+const GUILD_ID              = 'TU_ID_DE_SERVIDOR_AQUI'; 
+
 const BIENVENIDA_CHANNEL_ID = '1499842244608266250';
 const DESPEDIDA_CHANNEL_ID  = '1499842346341372005';
 const LOGS_CHANNEL_ID       = '1499842431800053860';
@@ -64,16 +68,23 @@ if (fs.existsSync(foldersPath)) {
     }
 }
 
-// --- REGISTRO DE SLASH COMMANDS ---
-const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
-(async () => {
+// --- FUNCIÓN PARA REGISTRAR COMANDOS (SOLUCIÓN A TU PROBLEMA) ---
+const registrarComandos = async () => {
+    const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
     try {
-        await rest.put(Routes.applicationCommands(process.env.CLIENT_ID), { body: commandsArray });
-        console.log('✅ Comandos registrados con éxito.');
+        console.log('⏳ Registrando comandos en el servidor...');
+        
+        // Se cambió applicationCommands por applicationGuildCommands
+        await rest.put(
+            Routes.applicationGuildCommands(process.env.CLIENT_ID, GUILD_ID), 
+            { body: commandsArray }
+        );
+        
+        console.log('✅ Comandos registrados con éxito localmente.');
     } catch (error) { 
         console.error("❌ Error en registro:", error); 
     }
-})();
+};
 
 // --- MANEJO DE INTERACCIONES ---
 client.on('interactionCreate', async interaction => {
@@ -200,6 +211,15 @@ client.on('messageCreate', async (message) => {
     }
 });
 
-client.once('ready', () => console.log(`🚀 ${client.user.tag} EN LÍNEA`));
+client.once('ready', async () => {
+    console.log(`🚀 ${client.user.tag} EN LÍNEA`);
+    
+    // Acá llamamos a la función de registro que definimos arriba
+    if (GUILD_ID !== 'TU_ID_DE_SERVIDOR_AQUI') {
+        await registrarComandos();
+    } else {
+        console.log('⚠️ ADVERTENCIA: No pusiste tu GUILD_ID. Los comandos no se registrarán.');
+    }
+});
 
 client.login(process.env.DISCORD_TOKEN);

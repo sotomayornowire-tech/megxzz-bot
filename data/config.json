@@ -1,0 +1,22 @@
+{
+  "canalLogs": null,
+  "antispam": {
+    "mensajes": 5,
+    "segundos": 5,
+    "timeoutMin": 5
+  },
+  "antiraid": {
+    "entradas": 5,
+    "segundos": 10,
+    "castigo": "kick"
+  },
+  "antinuke": {
+    "limite": 3,
+    "castigo": "demote"
+  },
+  "antibot": false,
+  "antiAltsDias": 10,
+  "antiMaliciosos": false,
+  "antipublicidad": true,
+  "whitelist": []
+}

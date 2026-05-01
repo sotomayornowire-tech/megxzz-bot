@@ -35,7 +35,7 @@ const client = new Client({
 client.commands = new Collection();
 const commandsArray = [];
 
-console.log("--- Iniciando Kripton Bot ---");
+console.log("--- Iniciando Megxzz Bot ---");
 
 // Carga de comandos
 const foldersPath = path.join(__dirname, 'commands');

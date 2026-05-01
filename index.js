@@ -36,9 +36,9 @@ client.commands = new Collection();
 const commandsArray = [];
 
 // --- CONSTANTES DE CANALES Y ROLES ---
-const BIENVENIDA_CHANNEL_ID = '1496695262243197039';
-const DESPEDIDA_CHANNEL_ID  = '1492936706524188804';
-const LOGS_CHANNEL_ID       = '1499828573261922406';
+const BIENVENIDA_CHANNEL_ID = '1499842244608266250';
+const DESPEDIDA_CHANNEL_ID  = '1499842346341372005';
+const LOGS_CHANNEL_ID       = '1499842431800053860';
 const AUTOROL_ID            = 'TU_ID_DE_ROL_AQUI'; // Reemplaza con el ID del rol real
 
 console.log("--- Iniciando Megxzz Bot ---");

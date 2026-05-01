@@ -3,9 +3,8 @@ const fs = require('node:fs');
 const path = require('node:path');
 const express = require('express');
 const app = express();
-const { manejarAfk } = require('./utils/afk');
 
-// Servidor para Render
+// --- SERVIDOR PARA RENDER ---
 app.get('/', (req, res) => res.send('Bot online!'));
 
 const PORT = process.env.PORT || 3000;
@@ -13,13 +12,14 @@ app.listen(PORT, '0.0.0.0', () => {
     console.log(`Servidor web iniciado en el puerto ${PORT}`);
 });
 
+// --- IMPORTACIONES DE DISCORD ---
 const { 
     Client, Collection, GatewayIntentBits, 
     Partials, REST, Routes, EmbedBuilder 
 } = require('discord.js');
 
 const { agregarTexto, obtenerCola } = require('./utils/tts');
-const { manejarBotonTicket }        = require('./commands/utilidad/ticket');
+const { manejarBotonTicket } = require('./commands/utilidad/ticket');
 
 const client = new Client({ 
     intents: [
@@ -35,28 +35,36 @@ const client = new Client({
 client.commands = new Collection();
 const commandsArray = [];
 
+// --- CONSTANTES DE CANALES Y ROLES ---
+const BIENVENIDA_CHANNEL_ID = '1496695262243197039';
+const DESPEDIDA_CHANNEL_ID  = '1492936706524188804';
+const LOGS_CHANNEL_ID       = '1499828573261922406';
+const AUTOROL_ID            = 'TU_ID_DE_ROL_AQUI'; // Reemplaza con el ID del rol real
+
 console.log("--- Iniciando Megxzz Bot ---");
 
-// Carga de comandos
+// --- CARGA DE COMANDOS ---
 const foldersPath = path.join(__dirname, 'commands');
-const commandFolders = fs.readdirSync(foldersPath);
-for (const folder of commandFolders) {
-    const commandsPath = path.join(foldersPath, folder);
-    if (fs.lstatSync(commandsPath).isDirectory()) {
-        const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
-        for (const file of commandFiles) {
-            const filePath = path.join(commandsPath, file);
-            const command = require(filePath);
-            if ('data' in command && 'execute' in command) {
-                client.commands.set(command.data.name, command);
-                commandsArray.push(command.data.toJSON());
-                console.log(`    ✅ Comando cargado: /${command.data.name}`);
+if (fs.existsSync(foldersPath)) {
+    const commandFolders = fs.readdirSync(foldersPath);
+    for (const folder of commandFolders) {
+        const commandsPath = path.join(foldersPath, folder);
+        if (fs.lstatSync(commandsPath).isDirectory()) {
+            const commandFiles = fs.readdirSync(commandsPath).filter(file => file.endsWith('.js'));
+            for (const file of commandFiles) {
+                const filePath = path.join(commandsPath, file);
+                const command = require(filePath);
+                if ('data' in command && 'execute' in command) {
+                    client.commands.set(command.data.name, command);
+                    commandsArray.push(command.data.toJSON());
+                    console.log(`    ✅ Comando cargado: /${command.data.name}`);
+                }
             }
         }
     }
 }
 
-// Registro de Slash Commands
+// --- REGISTRO DE SLASH COMMANDS ---
 const rest = new REST({ version: '10' }).setToken(process.env.DISCORD_TOKEN);
 (async () => {
     try {
@@ -76,7 +84,9 @@ client.on('interactionCreate', async interaction => {
             await command.execute(interaction); 
         } catch (e) { 
             console.error(e); 
-            await interaction.reply({ content: '❌ Error al ejecutar el comando.', flags: 64 });
+            if (!interaction.replied) {
+                await interaction.reply({ content: '❌ Error al ejecutar el comando.', flags: 64 });
+            }
         }
     } 
     else if (interaction.isButton()) {
@@ -84,12 +94,13 @@ client.on('interactionCreate', async interaction => {
             return manejarBotonTicket(interaction);
         }
 
-        const [prefijo, tipo, sub, originalId, targetId] = interaction.customId.split('_');
+        const parts = interaction.customId.split('_');
+        const [prefijo, tipo, sub, originalId, targetId] = parts;
         if (prefijo !== 'soc') return;
 
         if (interaction.user.id !== targetId) {
             return interaction.reply({ 
-                content: '❌Este botón no es para vos. Solo la persona que recibió la acción puede usarlo.', 
+                content: '❌ Este botón no es para vos.', 
                 flags: 64 
             });
         }
@@ -98,60 +109,51 @@ client.on('interactionCreate', async interaction => {
             await interaction.update({ content: `❌ **${interaction.user.username}** rechazó la interacción.`, embeds: [], components: [] });
         } else if (tipo === 'ret') {
             const command = client.commands.get('social');
-            const userA = interaction.user;
-            const userB = await client.users.fetch(originalId); 
-            
-            const nuevoEmbed = await command.generarEmbed(userA, userB, sub);
-            await interaction.reply({ content: `🔄 ¡Gesto devuelto!`, embeds: [nuevoEmbed] });
-            await interaction.message.edit({ components: [] });
-        }
-    }
-});
-
-// --- CONSTANTES DE CANALES ---
-const BIENVENIDA_CHANNEL_ID = '1496695262243197039';
-const DESPEDIDA_CHANNEL_ID  = '1492936706524188804';
-const LOGS_CHANNEL_ID       = '1499828573261922406';
-
-// --- EVENTO: ENTRADA DE MIEMBROS (SEGURIDAD + BIENVENIDA) ---
-client.on('guildMemberAdd', async member => {
-
-            const logChannel = member.guild.channels.cache.get(LOGS_CHANNEL_ID);
-            if (logChannel) {
-                logChannel.send(`🛡️ **Sistema Anti-Spam:** Se ha baneado a \`${member.user.tag}\``);
+            if (command) {
+                const userA = interaction.user;
+                const userB = await client.users.fetch(originalId); 
+                const nuevoEmbed = await command.generarEmbed(userA, userB, sub);
+                await interaction.reply({ content: `🔄 ¡Gesto devuelto!`, embeds: [nuevoEmbed] });
+                await interaction.message.edit({ components: [] });
             }
-            return; // Detener ejecución para que no le dé la bienvenida
-        } catch (err) {
-            console.error("Error al ejecutar auto-ban:", err);
         }
     }
-
-    // Lógica normal de autorol
-    if (AUTOROL_ID) {
-        member.roles.add(AUTOROL_ID).catch(err => console.error("Error al dar autorol:", err));
-    }
-
-    // Mensaje de bienvenida
-    const channel = member.guild.channels.cache.get(BIENVENIDA_CHANNEL_ID);
-    if (!channel) return;
-    
-    const embed = new EmbedBuilder()
-        .setTitle('👋 ¡Bienvenido!')
-        .setColor('#00FF00')
-        .setDescription(`¡Hola ${member.user}! Bienvenido a **${member.guild.name}**.`)
-        .setTimestamp();
-    channel.send({ embeds: [embed] });
 });
 
+// --- EVENTO: ENTRADA DE MIEMBROS ---
+client.on('guildMemberAdd', async member => {
+    try {
+        // Log de unión
+        const logChannel = member.guild.channels.cache.get(LOGS_CHANNEL_ID);
+        if (logChannel) {
+            logChannel.send(`📥 **${member.user.tag}** se ha unido al servidor.`);
+        }
+
+        // Autorol
+        if (AUTOROL_ID && AUTOROL_ID !== 'TU_ID_DE_ROL_AQUI') {
+            await member.roles.add(AUTOROL_ID).catch(() => null);
+        }
+
+        // Bienvenida
+        const welcomeChannel = member.guild.channels.cache.get(BIENVENIDA_CHANNEL_ID);
+        if (welcomeChannel) {
+            const embed = new EmbedBuilder()
+                .setTitle('👋 ¡Bienvenido!')
+                .setColor('#00FF00')
+                .setDescription(`¡Hola ${member.user}! Bienvenido a **${member.guild.name}**.`)
+                .setTimestamp();
+            welcomeChannel.send({ embeds: [embed] });
+        }
+    } catch (err) {
+        console.error("Error en guildMemberAdd:", err);
+    }
+});
+
+// --- EVENTO: SALIDA DE MIEMBROS ---
 client.on('guildMemberRemove', async member => {
     const channel = member.guild.channels.cache.get(DESPEDIDA_CHANNEL_ID);
     if (channel) {
         channel.send(`😢 **${member.user.tag}** ha abandonado el servidor.`);
-    }
-    try {
-        await member.send(`😢 Hola ${member.user.username}, lamentamos que hayas decidido dejar **${member.guild.name}**. ¡Esperamos volver a verte pronto!`);
-    } catch (err) {
-        console.log(`No pude enviar DM a ${member.user.tag}.`);
     }
 });
 
@@ -167,8 +169,8 @@ client.on('messageUpdate', (oldMsg, newMsg) => {
         .addFields(
             { name: 'Usuario', value: `${newMsg.author.tag}`, inline: true },
             { name: 'Canal', value: `${newMsg.channel.name}`, inline: true },
-            { name: 'Antes', value: oldMsg.content || '*Contenido no disponible*' },
-            { name: 'Ahora', value: newMsg.content || '*Contenido no disponible*' }
+            { name: 'Antes', value: oldMsg.content || '*Vacio*' },
+            { name: 'Ahora', value: newMsg.content || '*Vacio*' }
         );
     logChannel.send({ embeds: [embed] });
 });
@@ -182,11 +184,11 @@ client.on('messageDelete', (message) => {
         .setTitle('🗑️ Mensaje Borrado')
         .setColor('#FF0000')
         .setDescription(`Mensaje de ${message.author.tag} borrado en ${message.channel}`)
-        .addFields({ name: 'Contenido', value: message.content || '*Contenido no disponible*' });
+        .addFields({ name: 'Contenido', value: message.content || '*Sin contenido*' });
     logChannel.send({ embeds: [embed] });
 });
 
-// --- EVENTOS DE MENSAJE (AFK, TTS, IA) ---
+// --- EVENTOS DE MENSAJE (TTS) ---
 client.on('messageCreate', async (message) => {
     if (message.author.bot) return;
 
@@ -196,10 +198,7 @@ client.on('messageCreate', async (message) => {
             agregarTexto(message.guild.id, message.content);
         }
     }
-
-    }
 });
-
 
 client.once('ready', () => console.log(`🚀 ${client.user.tag} EN LÍNEA`));
 
